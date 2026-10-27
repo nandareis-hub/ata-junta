@@ -10,7 +10,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tipo_reuniao = $_POST['tipo_reuniao'] ?? 'Ordinária';
     $numero_ata = trim($_POST['numero_ata'] ?? '');
     $mandato = trim($_POST['mandato'] ?? '');
+    
+    // Guarda apenas o texto puro por extenso (ex: "Vinte e Dois"), evitando duplicações
     $numero_reuniao = trim($_POST['numero_reuniao'] ?? '');
+
     $data_reuniao = $_POST['data_reuniao'] ?? '';
     $hora_inicio = $_POST['hora_inicio'] ?? '';
     $hora_fim = !empty($_POST['hora_fim']) ? $_POST['hora_fim'] : null;
@@ -63,15 +66,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // Inserir ponto de ordem se preenchido
                 if (!empty($_POST['ponto_titulo'])) {
+                    // Tratamento do Valor Base: Converte de "19.852,50" para "19852.50" (formato BD float/decimal)
+                    $valor_base_final = null;
+                    if (!empty($_POST['valor_base'])) {
+                        $v_base = str_replace('.', '', $_POST['valor_base']); // Remove pontos de milhar
+                        $v_base = str_replace(',', '.', $v_base);             // Troca vírgula por ponto
+                        $valor_base_final = (float)$v_base;
+                    }
+
                     $sql_ponto = "INSERT INTO pontos_ordem (ata_id, numero_ponto, proposta_numero, codigo_procedimento, titulo, subscrito_por, valor_base, detalhes, resultado_votacao) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)";
+                    
                     $stmt_ponto = $pdo->prepare($sql_ponto);
+                    
                     $stmt_ponto->execute([
                         $ata_id,
                         $_POST['proposta_numero'] ?? '',
                         $_POST['codigo_procedimento'] ?? '',
                         $_POST['ponto_titulo'],
                         $_POST['subscrito_por'] ?? '',
-                        !empty($_POST['valor_base']) ? $_POST['valor_base'] : null,
+                        $valor_base_final,
                         $_POST['detalhes'] ?? '',
                         $_POST['resultado_votacao'] ?? 'Aprovado por unanimidade'
                     ]);
@@ -143,7 +156,7 @@ include_once 'includes/header.php';
             </div>
             <div class="form-group">
                 <label>N.º da Reunião por Extenso <span style="color:red">*</span></label>
-                <input type="text" name="numero_reuniao" required placeholder="Ex: Terceira">
+                <input type="text" name="numero_reuniao" required placeholder="Ex: Vinte e Dois">
             </div>
             <div class="form-group">
                 <label>Data da Reunião <span style="color:red">*</span></label>
@@ -226,7 +239,8 @@ include_once 'includes/header.php';
             </div>
             <div class="form-group">
                 <label>Valor Base (€)</label>
-                <input type="number" step="0.01" name="valor_base" placeholder="19000.00">
+                <!-- Máscara de formatação em tempo real para Valor Base (€) -->
+                <input type="text" id="valor_base" name="valor_base" placeholder="19.850,00">
             </div>
 
             <!-- BLOCO DE TRANSCRIÇÃO AO VIVO EM PORTUGUÊS -->
@@ -261,7 +275,7 @@ include_once 'includes/header.php';
     </form>
 </div>
 
-<!-- SCRIPTS DE NAVEGAÇÃO, VALIDAÇÃO E TRANSCRIÇÃO DE VOZ -->
+<!-- SCRIPTS DE NAVEGAÇÃO, VALIDAÇÃO, MÁSCARA E TRANSCRIÇÃO DE VOZ -->
 <script>
     let currentTabIndex = 0;
     const tabs = ['tab-agendamento', 'tab-presencas', 'tab-minuta'];
@@ -309,6 +323,22 @@ include_once 'includes/header.php';
             return false;
         }
         return true;
+    }
+
+    // Máscara dinâmica em tempo real para o Valor Base (€) no formato PT (ex: 19.850,00)
+    const elValorBase = document.getElementById('valor_base');
+    if (elValorBase) {
+        elValorBase.addEventListener('input', function (e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value === '') {
+                e.target.value = '';
+                return;
+            }
+            let floatValue = (parseFloat(value) / 100).toFixed(2);
+            let parts = floatValue.split('.');
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+            e.target.value = parts.join(',');
+        });
     }
 
     // Lógica da Transcrição de Voz ao Vivo (Web Speech API)
